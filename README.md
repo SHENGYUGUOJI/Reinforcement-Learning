@@ -1,2 +1,2 @@
 # Reinforcement-Learning
-#### Q learning,Sarsa and Eligibility trace
+#### Q learning,TD(lambda)-Sarsa- and Eligibility trace
