@@ -77,14 +77,14 @@ class DummyAgent():
         # This is your job!
         """Do a trial without learning, with display.
 
-        Parameters
-        ----------
-        n_steps -- number of steps to simulate for
+          Weight Update comes here and it replaces dummy agent function
         """
         
         # weight update here check pdf report for update formular
        
 
+    
+    
 if __name__ == "__main__":
     d = DummyAgent()
     d.visualize_trial()
