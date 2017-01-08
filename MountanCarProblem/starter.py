@@ -18,7 +18,7 @@ class DummyAgent:
 
         self.parameter1 = parameter1
 
-        self.learning_rate = 0.1
+        self.learning_rate = 0.01
         self.eta = 0.95
 
         self.x_space = np.linspace(-150, 30, 20)
@@ -33,7 +33,7 @@ class DummyAgent:
         self.input_layer = np.array(np.meshgrid(self.x_space, self.speed_space)).reshape(2, 400)
         self.input_weight = np.random.rand(3, 400)
 
-    def visualize_trial(self, n_steps=5000):
+    def visualize_trial(self, n_steps=1000):
         """Do a trial without learning, with display.
 
         Parameters
@@ -42,17 +42,17 @@ class DummyAgent:
         """
 
         # prepare for the visualization
-        plb.ion()
-        mv = mountaincar.MountainCarViewer(self.mountain_car)
-        mv.create_figure(n_steps, n_steps)
-        plb.draw()
+        # plb.ion()
+        # mv = mountaincar.MountainCarViewer(self.mountain_car)
+        # mv.create_figure(n_steps, n_steps)
+        # plb.draw()
 
         # make sure the mountain-car is reset
         self.mountain_car.reset()
 
-        for n in range(n_steps):
-            print('\rt =', self.mountain_car.t)
-            sys.stdout.flush()
+        while self.mountain_car.R <= 0.0:
+            # print('\rt =', self.mountain_car.t)
+            # sys.stdout.flush()
 
             # choose an action
             r, a = self.get_action_from_policy()
@@ -65,32 +65,29 @@ class DummyAgent:
             _, a2 = self.get_action_from_policy()
             q_value2 = self.get_q_value(a2)
 
-            delta = self.mountain_car.R - (q_value - self.eta*q_value2)
+            delta = self.mountain_car.R - (q_value - self.eta * q_value2)
 
-            self.eligibility_traces *= self.eta * 1
-            for i in range(400):
-                self.eligibility_traces[a+1, i] += r[i]
+            self.eligibility_traces *= self.eta * 0.5
+            for k in range(400):
+                self.eligibility_traces[a + 1, k] += r[k]
 
             self.input_weight += delta * self.learning_rate * self.eligibility_traces
 
             # update the visualization
-            mv.update_figure()
-            plb.show()
-            plb.pause(0.00000001)
+            # mv.update_figure()
+            # plb.show()
+            # plb.pause(0.00000001)
 
-            # check for rewards
-            if self.mountain_car.R > 0.0:
-                print("\rreward obtained at t = ", self.mountain_car.t)
-                break
+        print("\rreward obtained at t = ", self.mountain_car.t)
 
     def get_q_value(self, action):
         r = np.zeros(400)
         x = self.mountain_car.x
         x_d = self.mountain_car.x_d
 
-        for i in range(400):
-            center = self.input_layer[:, i]
-            r[i] = np.exp(-((center[0] - x) / self.sigma_x)**2 - ((center[1] - x_d) / self.sigma_speed)**2)
+        for k in range(400):
+            center = self.input_layer[:, k]
+            r[k] = np.exp(-((center[0] - x) / self.sigma_x) ** 2 - ((center[1] - x_d) / self.sigma_speed) ** 2)
 
         return np.sum(np.multiply(self.input_weight[action + 1, :], r))
 
@@ -99,9 +96,9 @@ class DummyAgent:
         x_d = self.mountain_car.x_d
 
         r = np.zeros(400)
-        for i in range(400):
-            center = self.input_layer[:, i]
-            r[i] = np.exp(-((center[0] - x) / self.sigma_x)**2 - ((center[1] - x_d) / self.sigma_speed)**2)
+        for k in range(400):
+            center = self.input_layer[:, k]
+            r[k] = np.exp(-((center[0] - x) / self.sigma_x) ** 2 - ((center[1] - x_d) / self.sigma_speed) ** 2)
 
         q = np.sum(np.multiply(self.input_weight, np.array([r, r, r])), axis=1)
         denominator = np.sum(np.exp(q))
@@ -109,12 +106,25 @@ class DummyAgent:
         p = np.exp(q) / denominator
 
         random = np.random.rand()
+        action = 0
+        offset = 0
+        for index, prob in enumerate(p):
+            if offset <= random < offset + prob:
+                action = index - 1
+                break
+            else:
+                offset += prob
 
-        #return np.argmin(np.abs(p - random)) - 1
-        return r, np.argmax(p) - 1
+        return r, action
 
 
 if __name__ == "__main__":
+    np.random.seed(42)
+
     d = DummyAgent()
-    d.visualize_trial()
-    plb.show()
+
+    for i in range(500):
+        print('Trial #', i)
+        d.mountain_car.reset()
+        d.visualize_trial()
+        # plb.show()
