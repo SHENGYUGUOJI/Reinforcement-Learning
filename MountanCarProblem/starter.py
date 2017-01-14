@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as mplb
 import math
 import mountaincar
-from multiprocessing import Process, Queue, Value
+from multiprocessing import Pool, cpu_count
 
 
 class SARSALambdaAgent:
@@ -20,9 +20,10 @@ class SARSALambdaAgent:
 
         self.parameter1 = parameter1
 
-        self.learning_rate = 0.01
-        self.eta = 0.95
-        self.nu = 0.5
+        self.learning_rate = 0.001
+        self.reward_factor = 0.95
+        self.trace_decay = 0.5
+        self.exploration_temp = 1
         self.size = 20
 
         self.x_space = np.linspace(-150, 30, self.size)
@@ -35,12 +36,16 @@ class SARSALambdaAgent:
         self.sigma_speed = np.abs(self.speed_space[0] - self.speed_space[1])
 
         self.input_layer = np.array(np.meshgrid(self.x_space, self.speed_space)).reshape(2, self.size ** 2)
-        self.input_weight = np.random.rand(3, self.size ** 2)
+        # self.input_weight = np.random.rand(3, self.size ** 2)
+        self.input_weight = np.ones((3, self.size**2))
 
-    def trial(self, max_steps=20000, visualize=False, logs=False):
+    def trial(self, max_steps=20000, visualize=False, logs=False, expl_temp_decay=False, trace_decay=False):
         """
         Execute the algorithm until the agent reaches the top of the hill
         """
+
+        if expl_temp_decay:
+            self.exploration_temp = 10**10
 
         # prepare for the visualization
         mv = mountaincar.MountainCarViewer(self.mountain_car)
@@ -65,9 +70,9 @@ class SARSALambdaAgent:
             r2, a2 = self.get_action_from_policy()
             q_value2 = self.get_q_value(a2)
 
-            delta = self.mountain_car.R - (q_value - self.eta * q_value2)
+            delta = self.mountain_car.R - (q_value - self.reward_factor * q_value2)
 
-            self.eligibility_traces *= self.eta * self.nu
+            self.eligibility_traces *= self.reward_factor * self.trace_decay
             for k in range(self.size ** 2):
                 self.eligibility_traces[a + 1, k] += r[k]
 
@@ -81,6 +86,13 @@ class SARSALambdaAgent:
                 mv.update_figure()
                 plb.show()
                 plb.pause(0.00000001)
+
+            if expl_temp_decay:
+                # Decrease the value but set the min to 1 as the property is symmetric around 1
+                self.exploration_temp = max(1, self.exploration_temp * 0.5)
+
+            if trace_decay:
+                self.trace_decay *= 0.9
 
         if logs:
             if self.mountain_car.t >= max_steps:
@@ -109,9 +121,9 @@ class SARSALambdaAgent:
         r = self.get_nn_activity()
 
         q = np.sum(np.multiply(self.input_weight, np.array([r, r, r])), axis=1)
-        denominator = np.sum(np.exp(q))
+        denominator = np.sum(np.exp(q / self.exploration_temp))
 
-        prob = np.exp(q) / denominator
+        prob = np.exp(q / self.exploration_temp) / denominator
 
         random = np.random.rand()
         action = 0
@@ -147,30 +159,28 @@ class SARSALambdaAgent:
         mplb.show()
 
 
-def launch_agent(q, c, trials):
+def launch_agent(trials):
     """
     Launch a learning procedure in a separate process for a new agent
-    :param c: share counter
-    :param q: shared queue
     :param trials: Number of trials
     :return:
     """
+
+    print('Start agent')
 
     a = SARSALambdaAgent()
     results = np.zeros(trials)
 
     for i in range(trials):
         t = a.trial(visualize=False)
-        with c.get_lock():
-            c.value -= 1
-            print(c.value, 'Trials missing')
+        print('Missing agent trials', trials - i - 1)
 
         results[i] = t
 
-    q.put(results)
+    return results
 
 
-def moving_average(data, n=1):
+def moving_average(data, n=3):
     ma = []
     for i, x in enumerate(data):
         ma.append(np.mean(data[max(0, i-n):i+n+1]))
@@ -182,25 +192,23 @@ if __name__ == "__main__":
 
     cmd = 0
     if len(sys.argv) > 1:
-        cmd = sys.argv[1]
+        cmd = int(sys.argv[1])
 
     # np.random.seed(42)
 
     if cmd == 0:
-        num_agents = 1
-        num_trials = 5
+        num_agents = 20
+        num_trials = 50
 
-        processes = []
-        queue = Queue()
-        counter = Value('i', num_agents * num_trials)
-        for l in range(num_agents):
-            p = Process(target=launch_agent, args=(queue, counter, num_trials))
-            p.start()
+        num_procs = max(1, (cpu_count() - 1))
+        pool = Pool(processes=num_procs)
 
-            processes.append(p)
+        args = np.ones(num_agents, dtype=int) * num_trials
 
-        # Get the results
-        times = np.mean(np.array([queue.get() for p in processes]), axis=0)
+        times = pool.map(launch_agent, args)
+
+        # Mean over the agents
+        times = np.mean(np.array(times), axis=0)
         ma = moving_average(times)
 
         mplb.plot(range(num_trials), times, '', range(num_trials), ma)
@@ -208,7 +216,7 @@ if __name__ == "__main__":
 
     if cmd == 1:
         agent = SARSALambdaAgent()
-        for l in range(100):
+        for l in range(0):
             print('Trial', l + 1)
             agent.trial(logs=True)
 
