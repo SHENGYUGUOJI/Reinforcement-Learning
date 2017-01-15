@@ -8,7 +8,8 @@ from multiprocessing import Pool, cpu_count
 
 
 class SARSALambdaAgent:
-    """A not so good agent for the mountain-car task.
+    """
+    Agent learning from the SARSA algorithm in combination with a neural network
     """
 
     def __init__(self, mountain_car=None, parameter1=3.0):
@@ -20,14 +21,15 @@ class SARSALambdaAgent:
 
         self.parameter1 = parameter1
 
+        # Hyper parameters
         self.learning_rate = 0.001
         self.reward_factor = 0.95
         self.trace_decay = 0.5
-        self.exploration_temp = 1
+        self.exploration_temp = 10 ** 10
         self.size = 20
 
+        # Initialize the different spaces
         self.x_space = np.linspace(-150, 30, self.size)
-
         self.speed_space = np.linspace(-15, 15, self.size)
 
         self.eligibility_traces = np.zeros((3, self.size ** 2))
@@ -36,18 +38,19 @@ class SARSALambdaAgent:
         self.sigma_speed = np.abs(self.speed_space[0] - self.speed_space[1])
 
         self.input_layer = np.array(np.meshgrid(self.x_space, self.speed_space)).reshape(2, self.size ** 2)
-        # self.input_weight = np.random.rand(3, self.size ** 2)
-        self.input_weight = np.ones((3, self.size**2))
+        self.input_weight = np.random.rand(3, self.size ** 2)
+        # self.input_weight = np.ones((3, self.size**2))
+        # self.input_weight = np.zeros((3, self.size**2))
 
-    def trial(self, max_steps=20000, visualize=False, logs=False, expl_temp_decay=False, trace_decay=False):
+    def trial(self, max_steps=20000, visualize=False, logs=False, expl_temp_decay=False):
         """
-        Execute the algorithm until the agent reaches the top of the hill
+        Execute the algorithm until the agent reaches the top of the hill or the max
         """
 
         if expl_temp_decay:
-            self.exploration_temp = 10**10
+            self.exploration_temp = 10 ** 10
 
-        # prepare for the visualization
+        # prepare for the visualization if required
         mv = mountaincar.MountainCarViewer(self.mountain_car)
         if visualize:
             mv.create_figure(max_steps, max_steps)
@@ -89,10 +92,7 @@ class SARSALambdaAgent:
 
             if expl_temp_decay:
                 # Decrease the value but set the min to 1 as the property is symmetric around 1
-                self.exploration_temp = max(1, self.exploration_temp * 0.5)
-
-            if trace_decay:
-                self.trace_decay *= 0.9
+                self.exploration_temp = max(1, self.exploration_temp * 0.8)
 
         if logs:
             if self.mountain_car.t >= max_steps:
@@ -103,6 +103,12 @@ class SARSALambdaAgent:
         return self.mountain_car.t
 
     def get_nn_activity(self, x=None, x_d=None):
+        """
+        Return the values of the neural activity for the current state or the specified in parameters
+        :param x: Position
+        :param x_d: Velocity
+        :return:
+        """
         r = np.zeros(self.size ** 2)
         x = self.mountain_car.x if x is None else x
         x_d = self.mountain_car.x_d if x_d is None else x_d
@@ -114,10 +120,20 @@ class SARSALambdaAgent:
         return r
 
     def get_q_value(self, action, r=None):
+        """
+        Return the Q-Value of the action and the specified neural activity or the current state
+        :param action: Action of the agent
+        :param r: NNetwork activity
+        :return:
+        """
         r = self.get_nn_activity() if r is None else r
         return np.sum(np.multiply(self.input_weight[action + 1, :], r))
 
     def get_action_from_policy(self):
+        """
+        Choose an action according to the policy and the current state
+        :return:
+        """
         r = self.get_nn_activity()
 
         q = np.sum(np.multiply(self.input_weight, np.array([r, r, r])), axis=1)
@@ -138,6 +154,10 @@ class SARSALambdaAgent:
         return r, action
 
     def plot_vector_field(self):
+        """
+        Display the vector field of the current neural network state
+        :return:
+        """
         X, Y = np.meshgrid(self.x_space, self.speed_space)
         U = np.zeros((20, 20))
         V = np.zeros((20, 20))
@@ -183,7 +203,7 @@ def launch_agent(trials):
 def moving_average(data, n=3):
     ma = []
     for i, x in enumerate(data):
-        ma.append(np.mean(data[max(0, i-n):i+n+1]))
+        ma.append(np.mean(data[max(0, i - n):i + n + 1]))
 
     return ma
 
@@ -200,7 +220,7 @@ if __name__ == "__main__":
         num_agents = 20
         num_trials = 50
 
-        num_procs = max(1, (cpu_count() - 1))
+        num_procs = max(1, (cpu_count() - 1))  # Prevent overload of the computer
         pool = Pool(processes=num_procs)
 
         args = np.ones(num_agents, dtype=int) * num_trials
