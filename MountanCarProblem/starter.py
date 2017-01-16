@@ -25,7 +25,7 @@ class SARSALambdaAgent:
         self.learning_rate = 0.001
         self.reward_factor = 0.95
         self.trace_decay = 0.5
-        self.exploration_temp = 10 ** 10
+        self.exploration_temp = 1
         self.size = 20
 
         # Initialize the different spaces
